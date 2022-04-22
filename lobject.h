@@ -338,13 +338,13 @@ typedef struct Node {
 typedef struct Table {
   CommonHeader;
   lu_byte flags;  /* 1<<p means tagmethod(p) is not present */ 
-  lu_byte lsizenode;  /* log2 of size of `node' array */
+  lu_byte lsizenode;  /* log2 of size of `node' array */ //散列表部分的log2大小。
   struct Table *metatable;
-  TValue *array;  /* array part */
-  Node *node;
-  Node *lastfree;  /* any free position is before this position */
+  TValue *array;  /* array part */ //数组部分
+  Node *node;       //散列表部分的头指针
+  Node *lastfree;  /* any free position is before this position */ // 记录空闲位置的下一个位置
   GCObject *gclist;
-  int sizearray;  /* size of `array' array */
+  int sizearray;  /* size of `array' array */ //数组部分的大小
 } Table;
 
 

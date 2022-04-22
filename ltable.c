@@ -66,7 +66,8 @@
 /*
 ** number of ints inside a lua_Number
 */
-#define numints		cast_int(sizeof(lua_Number)/sizeof(int))
+#define numints		cast_int(sizeof(lua_Number)/sizeof(int)) 
+// lua_Number是double类型，故一般情况下 numints = 2
 
 
 
@@ -84,21 +85,28 @@ static const Node dummynode_ = {
 static Node *hashnum (const Table *t, lua_Number n) {
   unsigned int a[numints];
   int i;
-  if (luai_numeq(n, 0))  /* avoid problems with -0 */
+  if (luai_numeq(n, 0))  /* avoid problems with -0 */ //判断n是否等于0
     return gnode(t, 0);
   memcpy(a, &n, sizeof(a));
-  for (i = 1; i < numints; i++) a[0] += a[i];
-  return hashmod(t, a[0]);
+  for (i = 1; i < numints; i++) a[0] += a[i]; // 求hash的被取模值
+  return hashmod(t, a[0]); //求hash值
 }
+/*
+hashmod的实现原理：
+hashmode(t,n) => (gnode(t, ((n) % ((sizenode(t)-1)|1)))) => (gnode(t, ((n) % ((表t的散列域大小 - 1)|1))))
+=> (表t的指针)->node[(计算出来的hash位置)]
+*/
 
 
 
 /*
 ** returns the `main' position of an element in a table (that is, the index
 ** of its hash value)
+* 代码意思是根据key的种类来分类查询Table并返回。
+仅key在散列域的时候使用，毕竟数组域不需要解析key。
 */
 static Node *mainposition (const Table *t, const TValue *key) {
-  switch (ttype(key)) {
+  switch (ttype(key)) {//对key值进行分类
     case LUA_TNUMBER:
       return hashnum(t, nvalue(key));
     case LUA_TSTRING:
@@ -116,6 +124,7 @@ static Node *mainposition (const Table *t, const TValue *key) {
 /*
 ** returns the index for `key' if `key' is an appropriate key to live in
 ** the array part of the table, -1 otherwise.
+* 返回在数组域中的key值的下标index
 */
 static int arrayindex (const TValue *key) {
   if (ttisnumber(key)) {
@@ -133,22 +142,25 @@ static int arrayindex (const TValue *key) {
 ** returns the index of a `key' for table traversals. First goes all
 ** elements in the array part, then elements in the hash part. The
 ** beginning of a traversal is signalled by -1.
+* 找到key值在表中的具体位置index
 */
 static int findindex (lua_State *L, Table *t, StkId key) {
   int i;
-  if (ttisnil(key)) return -1;  /* first iteration */
+  if (ttisnil(key)) return -1;  /* first iteration */ //判断key是否是nil
   i = arrayindex(key);
-  if (0 < i && i <= t->sizearray)  /* is `key' inside array part? */
-    return i-1;  /* yes; that's the index (corrected to C) */
+  if (0 < i && i <= t->sizearray)  /* is `key' inside array part? */ //判断是否在数组域
+    return i-1;  /* yes; that's the index (corrected to C) */ //i-=1为了适配C数组
   else {
     Node *n = mainposition(t, key);
-    do {  /* check whether `key' is somewhere in the chain */
+    //遍历HASH链表。n是根据hash值找到的node,如果冲突了，即不是想要的node节点，则根据next找下去。
+    do {  /* check whether `key' is somewhere in the chain */ 
       /* key may be dead already, but it is ok to use it in `next' */
       if (luaO_rawequalObj(key2tval(n), key) ||
             (ttype(gkey(n)) == LUA_TDEADKEY && iscollectable(key) &&
              gcvalue(gkey(n)) == gcvalue(key))) {
         i = cast_int(n - gnode(t, 0));  /* key index in hash table */
         /* hash elements are numbered after array ones */
+        //这里要加上sizearray的原因是散列域的index是接着数组域增长的
         return i + t->sizearray;
       }
       else n = gnext(n);
@@ -354,10 +366,10 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
 ** }=============================================================
 */
 
-
+//新建一个table的流程
 Table *luaH_new (lua_State *L, int narray, int nhash) {
-  Table *t = luaM_new(L, Table);
-  luaC_link(L, obj2gco(t), LUA_TTABLE);
+  Table *t = luaM_new(L, Table); //分配一个Table大小的空间
+  luaC_link(L, obj2gco(t), LUA_TTABLE); //链接到GC的链表上
   t->metatable = NULL;
   t->flags = cast_byte(~0);
   /* temporary values (kept only if some malloc fails) */
@@ -365,12 +377,12 @@ Table *luaH_new (lua_State *L, int narray, int nhash) {
   t->sizearray = 0;
   t->lsizenode = 0;
   t->node = cast(Node *, dummynode);
-  setarrayvector(L, t, narray);
-  setnodevector(L, t, nhash);
+  setarrayvector(L, t, narray);// 初始化数组域的大小，填充内容
+  setnodevector(L, t, nhash);// 初始化散列域的大小，填充内容
   return t;
 }
 
-
+//删除一个table
 void luaH_free (lua_State *L, Table *t) {
   if (t->node != dummynode)
     luaM_freearray(L, t->node, sizenode(t), Node);
@@ -378,9 +390,9 @@ void luaH_free (lua_State *L, Table *t) {
   luaM_free(L, t);
 }
 
-
+//查找表中的一个空闲位置
 static Node *getfreepos (Table *t) {
-  while (t->lastfree-- > t->node) {
+  while (t->lastfree-- > t->node) { //从lastfree先前搜索空闲位置
     if (ttisnil(gkey(t->lastfree)))
       return t->lastfree;
   }
@@ -398,12 +410,12 @@ static Node *getfreepos (Table *t) {
 */
 static TValue *newkey (lua_State *L, Table *t, const TValue *key) {
   Node *mp = mainposition(t, key);
-  if (!ttisnil(gval(mp)) || mp == dummynode) {
+  if (!ttisnil(gval(mp)) || mp == dummynode) { //如果找到的node的value不为空，冲突了
     Node *othern;
-    Node *n = getfreepos(t);  /* get a free place */
-    if (n == NULL) {  /* cannot find a free place? */
-      rehash(L, t, key);  /* grow table */
-      return luaH_set(L, t, key);  /* re-insert key into grown table */
+    Node *n = getfreepos(t);  /* get a free place */ //找到一个空闲的位置
+    if (n == NULL) {  /* cannot find a free place? */ 
+      rehash(L, t, key);  /* grow table */ //如果没有空闲位置，则重新洗牌
+      return luaH_set(L, t, key);  /* re-insert key into grown table */ // 重新插入一次
     }
     lua_assert(n != dummynode);
     othern = mainposition(t, key2tval(mp));
