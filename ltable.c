@@ -170,7 +170,7 @@ static int findindex (lua_State *L, Table *t, StkId key) {
   }
 }
 
-
+//用于迭代器， ipairs 和pairs
 int luaH_next (lua_State *L, Table *t, StkId key) {
   int i = findindex(L, t, key);  /* find original element */
   for (i++; i < t->sizearray; i++) {  /* try first array part */
@@ -289,11 +289,11 @@ static void setnodevector (lua_State *L, Table *t, int size) {
   }
   else {
     int i;
-    lsize = ceillog2(size);
+    lsize = ceillog2(size); // 求log2(size)
     if (lsize > MAXBITS)
       luaG_runerror(L, "table overflow");
-    size = twoto(lsize);
-    t->node = luaM_newvector(L, size, Node);
+    size = twoto(lsize); //求2^lsize
+    t->node = luaM_newvector(L, size, Node); //分配内存
     for (i=0; i<size; i++) {
       Node *n = gnode(t, i);
       gnext(n) = NULL;
@@ -344,20 +344,20 @@ void luaH_resizearray (lua_State *L, Table *t, int nasize) {
 
 static void rehash (lua_State *L, Table *t, const TValue *ek) {
   int nasize, na;
-  int nums[MAXBITS+1];  /* nums[i] = number of keys between 2^(i-1) and 2^i */
+  int nums[MAXBITS+1];  /* nums[i] = number of keys between 2^(i-1) and 2^i *///位图,第i个元素表示的是key在2^(i-1)到2^i 组件的元素数量
   int i;
   int totaluse;
   for (i=0; i<=MAXBITS; i++) nums[i] = 0;  /* reset counts */
-  nasize = numusearray(t, nums);  /* count keys in array part */
+  nasize = numusearray(t, nums);  /* count keys in array part *///遍历数组域，求元素数量
   totaluse = nasize;  /* all those keys are integer keys */
-  totaluse += numusehash(t, nums, &nasize);  /* count keys in hash part */
+  totaluse += numusehash(t, nums, &nasize);  /* count keys in hash part *///遍历散列域，求其中的正整数key的数量
   /* count extra key */
   nasize += countint(ek, nums);
   totaluse++;
   /* compute new size for array part */
-  na = computesizes(nums, &nasize);
+  na = computesizes(nums, &nasize);//计算数组域和散列域的分界值
   /* resize the table to new computed sizes */
-  resize(L, t, nasize, totaluse - na);
+  resize(L, t, nasize, totaluse - na);//重新分配大小
 }
 
 
@@ -369,7 +369,7 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
 //新建一个table的流程
 Table *luaH_new (lua_State *L, int narray, int nhash) {
   Table *t = luaM_new(L, Table); //分配一个Table大小的空间
-  luaC_link(L, obj2gco(t), LUA_TTABLE); //链接到GC的链表上
+  luaC_link(L, obj2gco(t), LUA_TTABLE); //链接到GC的链表上 
   t->metatable = NULL;
   t->flags = cast_byte(~0);
   /* temporary values (kept only if some malloc fails) */
@@ -409,8 +409,8 @@ static Node *getfreepos (Table *t) {
 ** position), new key goes to an empty position. 
 */
 static TValue *newkey (lua_State *L, Table *t, const TValue *key) {
-  Node *mp = mainposition(t, key);
-  if (!ttisnil(gval(mp)) || mp == dummynode) { //如果找到的node的value不为空，冲突了
+  Node *mp = mainposition(t, key);//占用hash值的节点
+  if (!ttisnil(gval(mp)) || mp == dummynode) { //如果找到的占用节点的value不为空，冲突了
     Node *othern;
     Node *n = getfreepos(t);  /* get a free place */ //找到一个空闲的位置
     if (n == NULL) {  /* cannot find a free place? */ 
@@ -418,8 +418,9 @@ static TValue *newkey (lua_State *L, Table *t, const TValue *key) {
       return luaH_set(L, t, key);  /* re-insert key into grown table */ // 重新插入一次
     }
     lua_assert(n != dummynode);
-    othern = mainposition(t, key2tval(mp));
+    othern = mainposition(t, key2tval(mp)); 
     if (othern != mp) {  /* is colliding node out of its main position? */
+      //如果占用节点的hash值与newkey不同，说明该节点是被“挤”到该位置来的，那么把该节点挪到freepos去，然后让newkey入住其mainposition。
       /* yes; move colliding node into free position */
       while (gnext(othern) != mp) othern = gnext(othern);  /* find previous */
       gnext(othern) = n;  /* redo the chain with `n' in place of `mp' */
@@ -428,21 +429,24 @@ static TValue *newkey (lua_State *L, Table *t, const TValue *key) {
       setnilvalue(gval(mp));
     }
     else {  /* colliding node is in its own main position */
+        //如果占用节点的hash值等于newkey的hash值，则把n插到mp的next，然后把mp换成n。这样就相当于把newkey插到mainposition的next上
       /* new node will go into free position */
       gnext(n) = gnext(mp);  /* chain new position */
       gnext(mp) = n;
       mp = n;
     }
   }
-  gkey(mp)->value = key->value; gkey(mp)->tt = key->tt;
+  gkey(mp)->value = key->value; gkey(mp)->tt = key->tt;//newkey占用mp节点
   luaC_barriert(L, t, key);
   lua_assert(ttisnil(gval(mp)));
   return gval(mp);
 }
+//tips: hash值相同的节点是通过next相连的！
 
 
 /*
 ** search function for integers
+* 查询key为数字类型：先查是否在数组域，后查散列域
 */
 const TValue *luaH_getnum (Table *t, int key) {
   /* (1 <= key && key <= t->sizearray) */
@@ -463,6 +467,7 @@ const TValue *luaH_getnum (Table *t, int key) {
 
 /*
 ** search function for strings
+* 查询，key为string类型
 */
 const TValue *luaH_getstr (Table *t, TString *key) {
   Node *n = hashstr(t, key);
@@ -477,6 +482,7 @@ const TValue *luaH_getstr (Table *t, TString *key) {
 
 /*
 ** main search function
+* 查询主体逻辑
 */
 const TValue *luaH_get (Table *t, const TValue *key) {
   switch (ttype(key)) {
@@ -502,9 +508,9 @@ const TValue *luaH_get (Table *t, const TValue *key) {
   }
 }
 
-
+//table元素赋值方法
 TValue *luaH_set (lua_State *L, Table *t, const TValue *key) {
-  const TValue *p = luaH_get(t, key);
+  const TValue *p = luaH_get(t, key);//先查询key是否在表里
   t->flags = 0;
   if (p != luaO_nilobject)
     return cast(TValue *, p);
@@ -512,7 +518,7 @@ TValue *luaH_set (lua_State *L, Table *t, const TValue *key) {
     if (ttisnil(key)) luaG_runerror(L, "table index is nil");
     else if (ttisnumber(key) && luai_numisnan(nvalue(key)))
       luaG_runerror(L, "table index is NaN");
-    return newkey(L, t, key);
+    return newkey(L, t, key);//不在表里，则创建新key
   }
 }
 
@@ -568,6 +574,7 @@ static int unbound_search (Table *t, unsigned int j) {
 /*
 ** Try to find a boundary in table `t'. A `boundary' is an integer index
 ** such that t[i] is non-nil and t[i+1] is nil (and 0 if t[1] is nil).
+* 二分查找，找到第一个nil节点的位置
 */
 int luaH_getn (Table *t) {
   unsigned int j = t->sizearray;

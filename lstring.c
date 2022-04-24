@@ -18,7 +18,7 @@
 #include "lstring.h"
 
 
-
+//缩放字符串容器的大小
 void luaS_resize (lua_State *L, int newsize) {
   GCObject **newhash;
   stringtable *tb;
@@ -26,7 +26,7 @@ void luaS_resize (lua_State *L, int newsize) {
   if (G(L)->gcstate == GCSsweepstring)
     return;  /* cannot resize during GC traverse */
   newhash = luaM_newvector(L, newsize, GCObject *);
-  tb = &G(L)->strt;
+  tb = &G(L)->strt; // tb是存放字符串的容器
   for (i=0; i<newsize; i++) newhash[i] = NULL;
   /* rehash */
   for (i=0; i<tb->size; i++) {
@@ -41,49 +41,49 @@ void luaS_resize (lua_State *L, int newsize) {
       p = next;
     }
   }
-  luaM_freearray(L, tb->hash, tb->size, TString *);
+  luaM_freearray(L, tb->hash, tb->size, TString *); //释放久的hash链表
   tb->size = newsize;
   tb->hash = newhash;
 }
 
-
+//创建新的字符串
 static TString *newlstr (lua_State *L, const char *str, size_t l,
                                        unsigned int h) {
   TString *ts;
   stringtable *tb;
-  if (l+1 > (MAX_SIZET - sizeof(TString))/sizeof(char))
+  if (l+1 > (MAX_SIZET - sizeof(TString))/sizeof(char)) //超出字符串容器大小，报错且返回
     luaM_toobig(L);
-  ts = cast(TString *, luaM_malloc(L, (l+1)*sizeof(char)+sizeof(TString)));
+  ts = cast(TString *, luaM_malloc(L, (l+1)*sizeof(char)+sizeof(TString))); // 分配内存空间
   ts->tsv.len = l;
   ts->tsv.hash = h;
   ts->tsv.marked = luaC_white(G(L));
   ts->tsv.tt = LUA_TSTRING;
   ts->tsv.reserved = 0;
-  memcpy(ts+1, str, l*sizeof(char));
+  memcpy(ts+1, str, l*sizeof(char));  //深拷贝赋值
   ((char *)(ts+1))[l] = '\0';  /* ending 0 */
   tb = &G(L)->strt;
   h = lmod(h, tb->size);
-  ts->tsv.next = tb->hash[h];  /* chain new entry */
+  ts->tsv.next = tb->hash[h];  /* chain new entry */ // 上链！
   tb->hash[h] = obj2gco(ts);
   tb->nuse++;
-  if (tb->nuse > cast(lu_int32, tb->size) && tb->size <= MAX_INT/2)
+  if (tb->nuse > cast(lu_int32, tb->size) && tb->size <= MAX_INT/2) //当前字符串数量大于容器size，且小于MAX_INT/2，则扩容（2倍）
     luaS_resize(L, tb->size*2);  /* too crowded */
   return ts;
 }
 
-
+//lua接口，创建新字符串
 TString *luaS_newlstr (lua_State *L, const char *str, size_t l) {
   GCObject *o;
   unsigned int h = cast(unsigned int, l);  /* seed */
   size_t step = (l>>5)+1;  /* if string is too long, don't hash all its chars */
   size_t l1;
-  for (l1=l; l1>=step; l1-=step)  /* compute hash */
+  for (l1=l; l1>=step; l1-=step)  /* compute hash */ //计算hash值，俺也不懂为啥这么算
     h = h ^ ((h<<5)+(h>>2)+cast(unsigned char, str[l1-1]));
-  for (o = G(L)->strt.hash[lmod(h, G(L)->strt.size)];
+  for (o = G(L)->strt.hash[lmod(h, G(L)->strt.size)];// lmod取模之后得到初始位置o，循环查找是否有一样的字符串。
        o != NULL;
        o = o->gch.next) {
     TString *ts = rawgco2ts(o);
-    if (ts->tsv.len == l && (memcmp(str, getstr(ts), l) == 0)) {
+    if (ts->tsv.len == l && (memcmp(str, getstr(ts), l) == 0)) { //如果在hash链表上找到一样的字符串
       /* string may be dead */
       if (isdead(G(L), o)) changewhite(o);
       return ts;

@@ -34,11 +34,11 @@ struct lua_longjmp;  /* defined in ldo.c */
 #define BASIC_STACK_SIZE        (2*LUA_MINSTACK)
 
 
-
-typedef struct stringtable {
-  GCObject **hash;
-  lu_int32 nuse;  /* number of elements */
-  int size;
+// 存放字符串的容器
+typedef struct stringtable { 　
+  GCObject **hash; //头指针
+  lu_int32 nuse;  /* number of elements */ //字符串数量
+  int size; //size用于控制扩容
 } stringtable;
 
 
@@ -66,25 +66,25 @@ typedef struct CallInfo {
 ** `global state', shared by all threads of this state
 */
 typedef struct global_State {
-  stringtable strt;  /* hash table for strings */
-  lua_Alloc frealloc;  /* function to reallocate memory */
+  stringtable strt;  /* hash table for strings */// 存放所有字符串的容器
+  lua_Alloc frealloc;  /* function to reallocate memory *///
   void *ud;         /* auxiliary data to `frealloc' */
   lu_byte currentwhite;
-  lu_byte gcstate;  /* state of garbage collector */
+  lu_byte gcstate;  /* state of garbage collector */ //GC的状态
   int sweepstrgc;  /* position of sweep in `strt' */
-  GCObject *rootgc;  /* list of all collectable objects */
+  GCObject *rootgc;  /* list of all collectable objects *///所有需要GC的object都放在该链表
   GCObject **sweepgc;  /* position of sweep in `rootgc' */
   GCObject *gray;  /* list of gray objects */
   GCObject *grayagain;  /* list of objects to be traversed atomically */
   GCObject *weak;  /* list of weak tables (to be cleared) */
-  GCObject *tmudata;  /* last element of list of userdata to be GC */
+  GCObject *tmudata;  /* last element of list of userdata to be GC */// 所有有GC方法的udata都放在tmudata链表中
   Mbuffer buff;  /* temporary buffer for string concatentation */
-  lu_mem GCthreshold;
-  lu_mem totalbytes;  /* number of bytes currently allocated */
-  lu_mem estimate;  /* an estimate of number of bytes actually in use */
-  lu_mem gcdept;  /* how much GC is `behind schedule' */
-  int gcpause;  /* size of pause between successive GCs */
-  int gcstepmul;  /* GC `granularity' */
+  lu_mem GCthreshold; // 一个阈值，当这个totalbytes大于这个阈值时进行自动GC
+  lu_mem totalbytes;  /* number of bytes currently allocated */  // 保存当前分配的总内存数量
+  lu_mem estimate;  /* an estimate of number of bytes actually in use */  // 一个估算值，根据这个计算GCthreshold
+  lu_mem gcdept;  /* how much GC is `behind schedule' */  // 当前待GC的数据大小，其实就是累加totalbytes和GCthreshold的差值
+  int gcpause;  /* size of pause between successive GCs */  // 可以配置的一个值，不是计算出来的，根据这个计算GCthreshold，以此来控制下一次GC触发的时间
+  int gcstepmul;  /* GC `granularity' */  // 每次进行GC操作回收的数据比例，见lgc.c/luaC_step函数
   lua_CFunction panic;  /* to be called in unprotected errors */
   TValue l_registry;
   struct lua_State *mainthread;
@@ -100,17 +100,17 @@ typedef struct global_State {
 struct lua_State {
   CommonHeader;
   lu_byte status;
-  StkId top;  /* first free slot in the stack */
-  StkId base;  /* base of current function */
-  global_State *l_G;
-  CallInfo *ci;  /* call info for current function */
-  const Instruction *savedpc;  /* `savedpc' of current function */
-  StkId stack_last;  /* last free slot in the stack */
-  StkId stack;  /* stack base */
-  CallInfo *end_ci;  /* points after end of ci array*/
-  CallInfo *base_ci;  /* array of CallInfo's */
-  int stacksize;
-  int size_ci;  /* size of array `base_ci' */
+  StkId top;  /* first free slot in the stack */ //栈顶位置，也是当前栈的下一个可用位置
+  StkId base;  /* base of current function */ //当前函数栈的基地址。
+  global_State *l_G;// 指向全局变量的指针
+  CallInfo *ci;  /* call info for current function */ //记录当前函数的执行信息
+  const Instruction *savedpc;  /* `savedpc' of current function */ //当前函数的程序计数器，也是字节码
+  StkId stack_last;  /* last free slot in the stack */ //栈中最后一个空位
+  StkId stack;  /* stack base *///栈数组的起始位置
+  CallInfo *end_ci;  /* points after end of ci array*/ //最后一个CallInfo的指针
+  CallInfo *base_ci;  /* array of CallInfo's */ //存放CallInfo的数组
+  int stacksize; //栈大小
+  int size_ci;  /* size of array `base_ci' */ //CI数组大小
   unsigned short nCcalls;  /* number of nested C calls */
   unsigned short baseCcalls;  /* nested C calls when resuming coroutine */
   lu_byte hookmask;

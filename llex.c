@@ -33,7 +33,7 @@
 #define currIsNewline(ls)	(ls->current == '\n' || ls->current == '\r')
 
 
-/* ORDER RESERVED */
+/* ORDER RESERVED */ //lua关键字，不会被GC
 const char *const luaX_tokens [] = {
     "and", "break", "do", "else", "elseif",
     "end", "false", "for", "function", "if",

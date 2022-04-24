@@ -561,10 +561,10 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
   }
   else {
     lua_pushfstring(L, "@%s", filename);
-    lf.f = fopen(filename, "r");
+    lf.f = fopen(filename, "r"); //用fopen打开文件
     if (lf.f == NULL) return errfile(L, "open", fnameindex);
   }
-  c = getc(lf.f);
+  c = getc(lf.f); //C语言库函数，从字节流中获取下一个字符。
   if (c == '#') {  /* Unix exec. file? */
     lf.extraline = 1;
     while ((c = getc(lf.f)) != EOF && c != '\n') ;  /* skip first line */
@@ -578,9 +578,10 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
     lf.extraline = 0;
   }
   ungetc(c, lf.f);
-  status = lua_load(L, getF, &lf, lua_tostring(L, -1));
+  // 以上是对不同类型文件的预处理
+  status = lua_load(L, getF, &lf, lua_tostring(L, -1)); // 后续逻辑在lua_load
   readstatus = ferror(lf.f);
-  if (filename) fclose(lf.f);  /* close file (even in case of errors) */
+  if (filename) fclose(lf.f);  /* close file (even in case of errors) *///关闭文件
   if (readstatus) {
     lua_settop(L, fnameindex);  /* ignore results from `lua_load' */
     return errfile(L, "read", fnameindex);
@@ -646,7 +647,7 @@ static int panic (lua_State *L) {
 
 LUALIB_API lua_State *luaL_newstate (void) {
   lua_State *L = lua_newstate(l_alloc, NULL);
-  if (L) lua_atpanic(L, &panic);
+  if (L) lua_atpanic(L, &panic); //不懂这是什么意思？锁？
   return L;
 }
 

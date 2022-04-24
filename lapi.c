@@ -803,7 +803,7 @@ static void f_call (lua_State *L, void *ud) {
 
 
 LUA_API int lua_pcall (lua_State *L, int nargs, int nresults, int errfunc) {
-  struct CallS c;
+  struct CallS c; //包含StkId func（函数在栈中的位置） 和 int nresults;
   int status;
   ptrdiff_t func;
   lua_lock(L);
@@ -816,9 +816,10 @@ LUA_API int lua_pcall (lua_State *L, int nargs, int nresults, int errfunc) {
     api_checkvalidindex(L, o);
     func = savestack(L, o);
   }
-  c.func = L->top - (nargs+1);  /* function to be called */
+  //以上代码是啥意思？
+  c.func = L->top - (nargs+1);  /* function to be called *///获取需要调用的函数指针
   c.nresults = nresults;
-  status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
+  status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);//luaD_pcall具体功能未知，但会回到f_call函数，见上文
   adjustresults(L, nresults);
   lua_unlock(L);
   return status;
@@ -861,13 +862,13 @@ LUA_API int lua_cpcall (lua_State *L, lua_CFunction func, void *ud) {
 
 LUA_API int lua_load (lua_State *L, lua_Reader reader, void *data,
                       const char *chunkname) {
-  ZIO z;
+  ZIO z;// 记录解析的进度，当前解析的position等信息。
   int status;
-  lua_lock(L);
+  lua_lock(L); //? 上锁？但实际上没有 #define lua_lock(L)     ((void) 0) 
   if (!chunkname) chunkname = "?";
-  luaZ_init(L, &z, reader, data);
-  status = luaD_protectedparser(L, &z, chunkname);
-  lua_unlock(L);
+  luaZ_init(L, &z, reader, data); //初始化 z
+  status = luaD_protectedparser(L, &z, chunkname); //后续词法分析等逻辑在这
+  lua_unlock(L); //解锁，其实也没有。#define lua_unlock(L)   ((void) 0)
   return status;
 }
 

@@ -40,8 +40,13 @@ typedef union GCObject GCObject;
 ** Common Header for all collectable objects (in macro form, to be
 ** included in other objects)
 */
-#define CommonHeader	GCObject *next; lu_byte tt; lu_byte marked
 
+#define CommonHeader	GCObject *next; lu_byte tt; lu_byte marked
+/*
+next:gc链表的指针，指向GCObject
+tt: 表示GCObject的具体类型
+marked:GC的标记位。
+*/
 
 /*
 ** Common header in struct form
@@ -68,9 +73,10 @@ typedef union {
 ** Tagged Values
 */
 
-#define TValuefields	Value value; int tt
+#define TValuefields	Value value; int tt  
 
-typedef struct lua_TValue {
+
+typedef struct lua_TValue { //TValue相当于是在Value的基础上装饰了一层，新增了一个int tt来标识Value的具体类型。
   TValuefields;
 } TValue;
 
@@ -197,11 +203,11 @@ typedef TValue *StkId;  /* index to stack elements */
 ** String headers for string table
 */
 typedef union TString {
-  L_Umaxalign dummy;  /* ensures maximum alignment for strings */
+  L_Umaxalign dummy;  /* ensures maximum alignment for strings */ //用于字节对齐
   struct {
     CommonHeader;
-    lu_byte reserved;
-    unsigned int hash;
+    lu_byte reserved; //标识这个字符串是否是Lua虚拟机中的保留字符串，保留字符串不会被GC回收，且只有lua关键字是保留字符串
+    unsigned int hash; // 散列值
     size_t len;
   } tsv;
 } TString;
@@ -226,16 +232,16 @@ typedef union Udata {
 
 
 /*
-** Function Prototypes
+** Function Prototypes 函数原型！
 */
 typedef struct Proto {
   CommonHeader;
   TValue *k;  /* constants used by the function */
-  Instruction *code;
-  struct Proto **p;  /* functions defined inside the function */
+  Instruction *code; //包含该函数实际调用的所有指令，类型是int32
+  struct Proto **p;  /* functions defined inside the function */ // 在这个函数中定义的函数
   int *lineinfo;  /* map from opcodes to source lines */
-  struct LocVar *locvars;  /* information about local variables */
-  TString **upvalues;  /* upvalue names */
+  struct LocVar *locvars;  /* information about local variables */ //存放局部变量的速度
+  TString **upvalues;  /* upvalue names */ //上值：非局部变量
   TString  *source;
   int sizeupvalues;
   int sizek;  /* size of `k' */
@@ -271,7 +277,7 @@ typedef struct LocVar {
 ** Upvalues
 */
 
-typedef struct UpVal {
+typedef struct UpVal { //上值：非局部变量
   CommonHeader;
   TValue *v;  /* points to stack or to its own value */
   union {
@@ -323,7 +329,7 @@ typedef union Closure {
 typedef union TKey {
   struct {
     TValuefields;
-    struct Node *next;  /* for chaining */
+    struct Node *next;  /* for chaining */ //hash值相同的节点是通过next相连的！
   } nk;
   TValue tvk;
 } TKey;
@@ -337,12 +343,12 @@ typedef struct Node {
 
 typedef struct Table {
   CommonHeader;
-  lu_byte flags;  /* 1<<p means tagmethod(p) is not present */ 
+  lu_byte flags;  /* 1<<p means tagmethod(p) is not present */ //用于cache该表中实现了哪些元方法,使用bit的01值来表示哪种元方法，详见lim.h
   lu_byte lsizenode;  /* log2 of size of `node' array */ //散列表部分的log2大小。
   struct Table *metatable;
   TValue *array;  /* array part */ //数组部分
   Node *node;       //散列表部分的头指针
-  Node *lastfree;  /* any free position is before this position */ // 记录空闲位置的下一个位置
+  Node *lastfree;  /* any free position is before this position */ // 哈希表可用尾指针，可用的空闲节点只会小于该lastfree节点
   GCObject *gclist;
   int sizearray;  /* size of `array' array */ //数组部分的大小
 } Table;

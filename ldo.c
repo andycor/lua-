@@ -269,13 +269,13 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
   funcr = savestack(L, func);
   cl = &clvalue(func)->l;
   L->ci->savedpc = L->savedpc;
-  if (!cl->isC) {  /* Lua function? prepare its call */
-    CallInfo *ci;
+  if (!cl->isC) {  /* Lua function? prepare its call */ //如果是lua函数
+    CallInfo *ci; //创建CallInfo ci，记录执行时的信息，有func,base,top三个栈指针
     StkId st, base;
     Proto *p = cl->p;
     luaD_checkstack(L, p->maxstacksize);
     func = restorestack(L, funcr);
-    if (!p->is_vararg) {  /* no varargs? */
+    if (!p->is_vararg) {  /* no varargs? */ //varargs是什么？
       base = func + 1;
       if (L->top > base + p->numparams)
         L->top = base + p->numparams;
@@ -287,13 +287,13 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
     }
     ci = inc_ci(L);  /* now `enter' new function */
     ci->func = func;
-    L->base = ci->base = base;
-    ci->top = L->base + p->maxstacksize;
+    L->base = ci->base = base; //记录当前函数的栈底
+    ci->top = L->base + p->maxstacksize;//记录当前函数的栈顶，maxstacksize是在前文中算出
     lua_assert(ci->top <= L->stack_last);
-    L->savedpc = p->code;  /* starting point */
+    L->savedpc = p->code;  /* starting point *///将字节码赋值给savedpc
     ci->tailcalls = 0;
     ci->nresults = nresults;
-    for (st = L->top; st < ci->top; st++)
+    for (st = L->top; st < ci->top; st++) //将多余参数设为nil
       setnilvalue(st);
     L->top = ci->top;
     if (L->hookmask & LUA_MASKCALL) {
@@ -303,7 +303,7 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
     }
     return PCRLUA;
   }
-  else {  /* if is a C function, call it */
+  else {  /* if is a C function, call it */ // 如果是C函数
     CallInfo *ci;
     int n;
     luaD_checkstack(L, LUA_MINSTACK);  /* ensure minimum stack size */
@@ -367,14 +367,14 @@ int luaD_poscall (lua_State *L, StkId firstResult) {
 ** function position.
 */ 
 void luaD_call (lua_State *L, StkId func, int nResults) {
-  if (++L->nCcalls >= LUAI_MAXCCALLS) {
+  if (++L->nCcalls >= LUAI_MAXCCALLS) { //如果超出栈大小
     if (L->nCcalls == LUAI_MAXCCALLS)
       luaG_runerror(L, "C stack overflow");
     else if (L->nCcalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS>>3)))
       luaD_throw(L, LUA_ERRERR);  /* error while handing stack error */
   }
-  if (luaD_precall(L, func, nResults) == PCRLUA)  /* is a Lua function? */
-    luaV_execute(L, 1);  /* call it */
+  if (luaD_precall(L, func, nResults) == PCRLUA)  /* is a Lua function? *///执行前预处理
+    luaV_execute(L, 1);  /* call it */ //执行代码
   L->nCcalls--;
   luaC_checkGC(L);
 }
@@ -487,30 +487,31 @@ struct SParser {  /* data to `f_parser' */
   const char *name;
 };
 
-static void f_parser (lua_State *L, void *ud) {
+static void f_parser (lua_State *L, void *ud) { //代码分析器
   int i;
-  Proto *tf;
-  Closure *cl;
+  Proto *tf; //函数
+  Closure *cl; //闭包
   struct SParser *p = cast(struct SParser *, ud);
   int c = luaZ_lookahead(p->z);
   luaC_checkGC(L);
   tf = ((c == LUA_SIGNATURE[0]) ? luaU_undump : luaY_parser)(L, p->z,
                                                              &p->buff, p->name);
-  cl = luaF_newLclosure(L, tf->nups, hvalue(gt(L)));
+  //以上没太搞清楚，等看完完整流程再来解答
+  cl = luaF_newLclosure(L, tf->nups, hvalue(gt(L))); //创建closeure并分配内存
   cl->l.p = tf;
   for (i = 0; i < tf->nups; i++)  /* initialize eventual upvalues */
-    cl->l.upvals[i] = luaF_newupval(L);
-  setclvalue(L, L->top, cl);
+    cl->l.upvals[i] = luaF_newupval(L); ////创建upvalues并分配内存
+  setclvalue(L, L->top, cl); //压入栈中
   incr_top(L);
 }
 
 
 int luaD_protectedparser (lua_State *L, ZIO *z, const char *name) {
-  struct SParser p;
+  struct SParser p; //词法分析parser的辅助数据结构
   int status;
   p.z = z; p.name = name;
   luaZ_initbuffer(L, &p.buff);
-  status = luaD_pcall(L, f_parser, &p, savestack(L, L->top), L->errfunc);
+  status = luaD_pcall(L, f_parser, &p, savestack(L, L->top), L->errfunc);//使用luaD_pcall执行代码解析函数f_parser，见上
   luaZ_freebuffer(L, &p.buff);
   return status;
 }

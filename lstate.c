@@ -142,14 +142,14 @@ void luaE_freethread (lua_State *L, lua_State *L1) {
 
 LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   int i;
-  lua_State *L;
+  lua_State *L; 
   global_State *g;
-  void *l = (*f)(ud, NULL, 0, state_size(LG));
+  void *l = (*f)(ud, NULL, 0, state_size(LG)); //分配内存，LG=L+G
   if (l == NULL) return NULL;
-  L = tostate(l);
+  L = tostate(l); //转化类型为lua_State
   g = &((LG *)L)->g;
   L->next = NULL;
-  L->tt = LUA_TTHREAD;
+  L->tt = LUA_TTHREAD; //标记数据类型
   g->currentwhite = bit2mask(WHITE0BIT, FIXEDBIT);
   L->marked = luaC_white(g);
   set2bits(L->marked, FIXEDBIT, SFIXEDBIT);

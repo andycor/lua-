@@ -377,11 +377,11 @@ void luaV_execute (lua_State *L, int nexeccalls) {
   const Instruction *pc;
  reentry:  /* entry point */
   lua_assert(isLua(L->ci));
-  pc = L->savedpc;
-  cl = &clvalue(L->ci->func)->l;
+  pc = L->savedpc; //拿出字节码，pc是程序计数器
+  cl = &clvalue(L->ci->func)->l; //
   base = L->base;
   k = cl->p->k;
-  /* main loop of interpreter */
+  /* main loop of interpreter *///循环执行字节码
   for (;;) {
     const Instruction i = *pc++;
     StkId ra;
@@ -637,7 +637,7 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         if (b != 0) L->top = ra+b-1;
         if (L->openupval) luaF_close(L, base);
         L->savedpc = pc;
-        b = luaD_poscall(L, ra);
+        b = luaD_poscall(L, ra);//执行完所有指令后，恢复环境
         if (--nexeccalls == 0)  /* was previous function running `here'? */
           return;  /* no: return */
         else {  /* yes: continue its execution */
