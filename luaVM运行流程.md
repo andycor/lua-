@@ -51,17 +51,17 @@ typedef struct global_State {
 struct lua_State {
   CommonHeader;
   lu_byte status;
-  StkId top;  /* first free slot in the stack */
-  StkId base;  /* base of current function */
-  global_State *l_G; // 指向全局变量的指针
-  CallInfo *ci;  /* call info for current function */
-  const Instruction *savedpc;  /* `savedpc' of current function */
-  StkId stack_last;  /* last free slot in the stack */
-  StkId stack;  /* stack base */
-  CallInfo *end_ci;  /* points after end of ci array*/
-  CallInfo *base_ci;  /* array of CallInfo's */
-  int stacksize;
-  int size_ci;  /* size of array `base_ci' */
+  StkId top;  /* first free slot in the stack */ //栈顶位置，也是当前栈的下一个可用位置
+  StkId base;  /* base of current function */ //当前函数栈的基地址。
+  global_State *l_G;// 指向全局变量的指针
+  CallInfo *ci;  /* call info for current function */ //记录当前函数的执行信息
+  const Instruction *savedpc;  /* `savedpc' of current function */ //当前函数的程序计数器，也是字节码
+  StkId stack_last;  /* last free slot in the stack */ //栈中最后一个空位
+  StkId stack;  /* stack base *///栈数组的起始位置
+  CallInfo *end_ci;  /* points after end of ci array*/ //最后一个CallInfo的指针
+  CallInfo *base_ci;  /* array of CallInfo's */ //存放CallInfo的数组
+  int stacksize; //栈大小
+  int size_ci;  /* size of array `base_ci' */ //CI数组大小
   unsigned short nCcalls;  /* number of nested C calls */
   unsigned short baseCcalls;  /* nested C calls when resuming coroutine */
   lu_byte hookmask;
@@ -144,3 +144,135 @@ luaD_call() ->
 luaD_precall() & luaV_execute()  
 
 重点是luaD_precall() 和 luaV_execute()，后者执行指令，前者完成执行指令前的准备工作。
+
+### luaD_precall() 执行前准备
+~~~cpp
+int luaD_precall (lua_State *L, StkId func, int nresults) {
+  LClosure *cl;
+  ptrdiff_t funcr;
+  if (!ttisfunction(func)) /* `func' is not a function? */
+    func = tryfuncTM(L, func);  /* check the `function' tag method */
+  funcr = savestack(L, func);
+  cl = &clvalue(func)->l;
+  L->ci->savedpc = L->savedpc;
+  if (!cl->isC) {  /* Lua function? prepare its call */ //如果是lua函数
+    CallInfo *ci; //创建CallInfo ci，记录执行时的信息，有func,base,top三个栈指针
+    StkId st, base;
+    Proto *p = cl->p;
+    luaD_checkstack(L, p->maxstacksize);
+    func = restorestack(L, funcr);
+    if (!p->is_vararg) {  /* no varargs? */ //varargs是什么？
+      base = func + 1;
+      if (L->top > base + p->numparams)
+        L->top = base + p->numparams;
+    }
+    else {  /* vararg function */
+      int nargs = cast_int(L->top - func) - 1;
+      base = adjust_varargs(L, p, nargs);
+      func = restorestack(L, funcr);  /* previous call may change the stack */
+    }
+    ci = inc_ci(L);  /* now `enter' new function */
+    ci->func = func;
+    L->base = ci->base = base; //记录当前函数的栈底
+    ci->top = L->base + p->maxstacksize;//记录当前函数的栈顶，maxstacksize是在词法分析中算出
+    lua_assert(ci->top <= L->stack_last);
+    L->savedpc = p->code;  /* starting point *///将字节码赋值给savedpc
+    ci->tailcalls = 0;
+    ci->nresults = nresults;
+    for (st = L->top; st < ci->top; st++) //将多余参数设为nil
+      setnilvalue(st);
+    L->top = ci->top;
+    if (L->hookmask & LUA_MASKCALL) { 
+      L->savedpc++;  /* hooks assume 'pc' is already incremented */
+      luaD_callhook(L, LUA_HOOKCALL, -1);
+      L->savedpc--;  /* correct 'pc' */
+    }
+    return PCRLUA;
+  }
+  else {  /* if is a C function, call it */ // 如果是C函数
+    CallInfo *ci;
+    int n;
+    luaD_checkstack(L, LUA_MINSTACK);  /* ensure minimum stack size */
+    ci = inc_ci(L);  /* now `enter' new function */
+    ci->func = restorestack(L, funcr);
+    L->base = ci->base = ci->func + 1;
+    ci->top = L->top + LUA_MINSTACK;
+    lua_assert(ci->top <= L->stack_last);
+    ci->nresults = nresults;
+    if (L->hookmask & LUA_MASKCALL)
+      luaD_callhook(L, LUA_HOOKCALL, -1);
+    lua_unlock(L);
+    n = (*curr_func(L)->c.f)(L);  /* do the actual call */ //执行函数
+    lua_lock(L);
+    if (n < 0)  /* yielding? */
+      return PCRYIELD;
+    else {
+      luaD_poscall(L, L->top - n);
+      return PCRC;
+    }
+  }
+}
+~~~
+从代码中可以看出precall主要做的是执行指令前的预处理，它对函数类型进行区分。   
+如果是lua函数，做以下工作：
+1. 从lua_State的CallInfo数组里取得一个全新的CallInfo结构体，设置它的func、base、top指针。
+2. 从词法语法分析的结果closure中取出Proto结构体，这个Proto结构体中存放了字节码（p->code）。
+3. 给新创建的CallInfo赋值，尤其是top指针和base指针，他们分别代表了该函数在栈中的上下区间。
+4. 将字节码赋值给lua_State的savedpc字段。
+5. 将多余的函数参数赋值为Nil。
+
+如果是C函数，做一下工作：
+1. 从lua_State的CallInfo数组里取得一个全新的CallInfo结构体，设置它的func、base、top指针。
+2. 执行函数n = (*curr_func(L)->c.f)(L);
+3. 如果执行完毕，则调用luaD_poscall恢复函数执行前的状态。
+
+
+----------------------------------------------
+
+### luaV_execute() 执行字节码
+~~~cpp
+void luaV_execute (lua_State *L, int nexeccalls) {
+  LClosure *cl;
+  StkId base;
+  TValue *k;
+  const Instruction *pc;
+ reentry:  /* entry point */
+  lua_assert(isLua(L->ci));
+  pc = L->savedpc; //拿出字节码，pc也是程序计数器
+  cl = &clvalue(L->ci->func)->l; //
+  base = L->base;
+  k = cl->p->k;
+  /* main loop of interpreter *///循环执行字节码
+  for (;;) {
+    const Instruction i = *pc++; //程序计数器++，同时取出对应地址的字节码，用32位int来表示
+    StkId ra;  //表示操作数a在栈上的位置
+    if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) &&
+        (--L->hookcount == 0 || L->hookmask & LUA_MASKLINE)) {
+      traceexec(L, pc);
+      if (L->status == LUA_YIELD) {  /* did hook yield? */
+        L->savedpc = pc - 1;
+        return;
+      }
+      base = L->base;
+    }
+    /* warning!! several calls may realloc the stack and invalidate `ra' */
+    ra = RA(i); //解析字节码，取出操作数A
+    lua_assert(base == L->base && L->base == L->ci->base);
+    lua_assert(base <= L->top && L->top <= L->stack + L->stacksize);
+    lua_assert(L->top == L->ci->top || luaG_checkopenop(i));
+    switch (GET_OPCODE(i)) { //对不同的指令，执行不同的操作。
+      case OP_MOVE: {
+        setobjs2s(L, ra, RB(i));
+        continue;
+      }
+      case OP_LOADK:
+      ......以下省略
+    }
+  }
+}
+~~~
+从代码可以看出execute就是一个大循环，循环执行各种不同的指令。   
+注意在执行完n-1条指令后，最后一条指令会调用luaD_poscall来恢复函数执行前的环境。
+
+### 代码运行时的栈状态和CallInfo
+![avatar](/images/执行函数时的栈状态.png)

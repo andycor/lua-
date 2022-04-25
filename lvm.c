@@ -377,14 +377,14 @@ void luaV_execute (lua_State *L, int nexeccalls) {
   const Instruction *pc;
  reentry:  /* entry point */
   lua_assert(isLua(L->ci));
-  pc = L->savedpc; //拿出字节码，pc是程序计数器
+  pc = L->savedpc; //拿出字节码，pc也是程序计数器
   cl = &clvalue(L->ci->func)->l; //
   base = L->base;
   k = cl->p->k;
   /* main loop of interpreter *///循环执行字节码
   for (;;) {
-    const Instruction i = *pc++;
-    StkId ra;
+    const Instruction i = *pc++; //程序计数器++，同时取出对应地址的字节码，用32位int来表示
+    StkId ra;  //表示操作数a在栈上的位置
     if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) &&
         (--L->hookcount == 0 || L->hookmask & LUA_MASKLINE)) {
       traceexec(L, pc);
@@ -395,11 +395,11 @@ void luaV_execute (lua_State *L, int nexeccalls) {
       base = L->base;
     }
     /* warning!! several calls may realloc the stack and invalidate `ra' */
-    ra = RA(i);
+    ra = RA(i); //解析字节码，取出操作数A
     lua_assert(base == L->base && L->base == L->ci->base);
     lua_assert(base <= L->top && L->top <= L->stack + L->stacksize);
     lua_assert(L->top == L->ci->top || luaG_checkopenop(i));
-    switch (GET_OPCODE(i)) {
+    switch (GET_OPCODE(i)) { //对不同的指令，执行不同的操作。
       case OP_MOVE: {
         setobjs2s(L, ra, RB(i));
         continue;

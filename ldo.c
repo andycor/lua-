@@ -288,7 +288,7 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
     ci = inc_ci(L);  /* now `enter' new function */
     ci->func = func;
     L->base = ci->base = base; //记录当前函数的栈底
-    ci->top = L->base + p->maxstacksize;//记录当前函数的栈顶，maxstacksize是在前文中算出
+    ci->top = L->base + p->maxstacksize;//记录当前函数的栈顶，maxstacksize是在词法分析中算出
     lua_assert(ci->top <= L->stack_last);
     L->savedpc = p->code;  /* starting point *///将字节码赋值给savedpc
     ci->tailcalls = 0;
@@ -316,7 +316,7 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
     if (L->hookmask & LUA_MASKCALL)
       luaD_callhook(L, LUA_HOOKCALL, -1);
     lua_unlock(L);
-    n = (*curr_func(L)->c.f)(L);  /* do the actual call */
+    n = (*curr_func(L)->c.f)(L);  /* do the actual call */ //执行函数
     lua_lock(L);
     if (n < 0)  /* yielding? */
       return PCRYIELD;
