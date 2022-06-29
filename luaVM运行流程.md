@@ -239,9 +239,9 @@ void luaV_execute (lua_State *L, int nexeccalls) {
  reentry:  /* entry point */
   lua_assert(isLua(L->ci));
   pc = L->savedpc; //拿出字节码，pc也是程序计数器
-  cl = &clvalue(L->ci->func)->l; //
+  cl = &clvalue(L->ci->func)->l; //函数环境
   base = L->base;
-  k = cl->p->k;
+  k = cl->p->k;//当前函数环境的常量数组
   /* main loop of interpreter *///循环执行字节码
   for (;;) {
     const Instruction i = *pc++; //程序计数器++，同时取出对应地址的字节码，用32位int来表示
