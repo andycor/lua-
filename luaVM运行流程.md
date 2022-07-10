@@ -97,22 +97,28 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   //下面是初始化lua_State和global_State的内容，故省略
 }
 
+其实就是L（lua_State ）和G（global_State）分配内存以及初始化。
+
 ~~~
 -------------------------------
 # luaL_dofile 
+
 ~~~cpp
-#define luaL_dofile(L, fn) \
+define luaL_dofile(L, fn) \
 	(luaL_loadfile(L, fn) || lua_pcall(L, 0, LUA_MULTRET, 0))
 ~~~
+
 由以上宏定义可知，luaL_dofile由两部分组成：
 1.  luaL_loadfile() 加载.lua文件并做词法分析、语法分析。将代码转换成字节码。
 2.  lua_pcall() 将字节码放到虚拟机中执行。
 
 ## luaL_loadfile()
-大致流程是  
-luaL_loadfile()使用fopen读取代码文件并做预处理 ->   
-lua_load() 创建并初始化ZIO ->   
-luaD_protectedparser() 使用luaD_pcall执行代码解析函数f_parser   
+luaL_loadfile的大致流程是 ：
+1. luaL_loadfile()使用fopen读取代码文件并做预处理
+2. lua_load() 创建并初始化ZIO ->   
+3. luaD_protectedparser() 使用luaD_pcall执行代码解析函数f_parser来解析lua代码
+
+f_parser函数如下：
 ~~~cpp
 static void f_parser (lua_State *L, void *ud) { //代码分析器
   int i;
@@ -122,7 +128,7 @@ static void f_parser (lua_State *L, void *ud) { //代码分析器
   int c = luaZ_lookahead(p->z);
   luaC_checkGC(L);
   tf = ((c == LUA_SIGNATURE[0]) ? luaU_undump : luaY_parser)(L, p->z,
-                                                             &p->buff, p->name);
+                                                             &p->buff, p->name); // 通过luaY_parser分析代码得到tf(Proto)
   //以上没太搞清楚，等看完完整流程再来解答
   cl = luaF_newLclosure(L, tf->nups, hvalue(gt(L))); //创建closeure并分配内存
   cl->l.p = tf;
@@ -132,16 +138,47 @@ static void f_parser (lua_State *L, void *ud) { //代码分析器
   incr_top(L);
 }
 ~~~
-TODO 词法分析，语法分析的内容待填充
+
+Proto是分析阶段的产物，它包含了执行阶段所需要的各种数据，它是连接分析阶段和执行阶段的纽带，其具体数据结构如下：
+
+~~~cpp
+/*
+** Function Prototypes 函数原型！
+*/
+typedef struct Proto {
+  CommonHeader;
+  TValue *k;  /* constants used by the function */ //常量表
+  Instruction *code; //包含该函数实际调用的指令序列，类型是int32，一个int32整数就代表一条指令。
+  struct Proto **p;  /* functions defined inside the function */ // 在这个函数中定义的函数，嵌套函数的原型数组
+  int *lineinfo;  /* map from opcodes to source lines */
+  struct LocVar *locvars;  /* information about local variables */ 
+  TString **upvalues;  /* upvalue names */ //这里不是函数的上值，函数的上值存放在LClosure闭包中
+  TString  *source; // 用于debug
+  int sizeupvalues;
+  int sizek;  /* size of `k' */
+  int sizecode;
+  int sizelineinfo;
+  int sizep;  /* size of `p' */
+  int sizelocvars;
+  int linedefined;
+  int lastlinedefined;
+  GCObject *gclist;
+  lu_byte nups;  /* number of upvalues */
+  lu_byte numparams;
+  lu_byte is_vararg;
+  lu_byte maxstacksize;
+} Proto;
+~~~
+这里不详细分析词法语法分析的过程。
 
 --------------------------------------
 
 ## lua_pcall
-大致流程是
-lua_pcall() ->  
-luaD_pcall() ->  
-luaD_call() ->  
-luaD_precall() & luaV_execute()  
+lua_pcall的大致流程是
+1. lua_pcall()
+2. luaD_pcall()
+3. luaD_call()
+4. luaD_precall() & luaV_execute()  
 
 重点是luaD_precall() 和 luaV_execute()，后者执行指令，前者完成执行指令前的准备工作。
 
@@ -153,7 +190,7 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
   if (!ttisfunction(func)) /* `func' is not a function? */
     func = tryfuncTM(L, func);  /* check the `function' tag method */
   funcr = savestack(L, func);
-  cl = &clvalue(func)->l;
+  cl = &clvalue(func)->l; // 拿到函数的闭包
   L->ci->savedpc = L->savedpc;
   if (!cl->isC) {  /* Lua function? prepare its call */ //如果是lua函数
     CallInfo *ci; //创建CallInfo ci，记录执行时的信息，有func,base,top三个栈指针
@@ -215,13 +252,13 @@ int luaD_precall (lua_State *L, StkId func, int nresults) {
 ~~~
 从代码中可以看出precall主要做的是执行指令前的预处理，它对函数类型进行区分。   
 如果是lua函数，做以下工作：
-1. 从lua_State的CallInfo数组里取得一个全新的CallInfo结构体，设置它的func、base、top指针。
+1. 从lua_State的CallInfo数组里取得一个全新的CallInfo结构体，设置它的func、base、top指针（因为马上要执行一个新的函数了）。
 2. 从词法语法分析的结果closure中取出Proto结构体，这个Proto结构体中存放了字节码（p->code）。
 3. 给新创建的CallInfo赋值，尤其是top指针和base指针，他们分别代表了该函数在栈中的上下区间。
 4. 将字节码赋值给lua_State的savedpc字段。
 5. 将多余的函数参数赋值为Nil。
 
-如果是C函数，做一下工作：
+如果是C函数，做以下工作：
 1. 从lua_State的CallInfo数组里取得一个全新的CallInfo结构体，设置它的func、base、top指针。
 2. 执行函数n = (*curr_func(L)->c.f)(L);
 3. 如果执行完毕，则调用luaD_poscall恢复函数执行前的状态。
@@ -239,9 +276,9 @@ void luaV_execute (lua_State *L, int nexeccalls) {
  reentry:  /* entry point */
   lua_assert(isLua(L->ci));
   pc = L->savedpc; //拿出字节码，pc也是程序计数器
-  cl = &clvalue(L->ci->func)->l; //
+  cl = &clvalue(L->ci->func)->l; // 拿到该函数的闭包
   base = L->base;
-  k = cl->p->k;
+  k = cl->p->k; // 常量
   /* main loop of interpreter *///循环执行字节码
   for (;;) {
     const Instruction i = *pc++; //程序计数器++，同时取出对应地址的字节码，用32位int来表示
@@ -273,6 +310,22 @@ void luaV_execute (lua_State *L, int nexeccalls) {
 ~~~
 从代码可以看出execute就是一个大循环，循环执行各种不同的指令。   
 注意在执行完n-1条指令后，最后一条指令会调用luaD_poscall来恢复函数执行前的环境。
+~~~cpp
+~~~
 
 ### 代码运行时的栈状态和CallInfo
 ![avatar](/images/执行函数时的栈状态.png)
+其中CallInfo是存放函数运行时数据的辅助数据结构，定义如下：
+~~~cpp
+typedef struct CallInfo {
+  StkId base;  /* base for this function */
+  StkId func;  /* function index in the stack */
+  StkId	top;  /* top for this function */
+  const Instruction *savedpc;
+  int nresults;  /* expected number of results from this function */
+  int tailcalls;  /* number of tail calls lost under this entry */
+} CallInfo;
+~~~
+
+lua采用基于寄存器的虚拟机实现，指令格式如下。
+![avatar](/images/指令格式.jpg)

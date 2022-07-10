@@ -236,13 +236,13 @@ typedef union Udata {
 */
 typedef struct Proto {
   CommonHeader;
-  TValue *k;  /* constants used by the function */
-  Instruction *code; //包含该函数实际调用的所有指令，类型是int32
-  struct Proto **p;  /* functions defined inside the function */ // 在这个函数中定义的函数
+  TValue *k;  /* constants used by the function */ //常量表
+  Instruction *code; //包含该函数实际调用的指令序列，类型是int32，一个int32整数就代表一条指令。
+  struct Proto **p;  /* functions defined inside the function */ // 在这个函数中定义的函数，嵌套函数的原型数组
   int *lineinfo;  /* map from opcodes to source lines */
-  struct LocVar *locvars;  /* information about local variables */ //存放局部变量的速度
-  TString **upvalues;  /* upvalue names */ //上值：非局部变量
-  TString  *source;
+  struct LocVar *locvars;  /* information about local variables */ 
+  TString **upvalues;  /* upvalue names */ //这里不是函数的上值，函数的上值存放在LClosure闭包中
+  TString  *source; // 用于debug
   int sizeupvalues;
   int sizek;  /* size of `k' */
   int sizecode;
@@ -298,17 +298,17 @@ typedef struct UpVal { //上值：非局部变量
 	CommonHeader; lu_byte isC; lu_byte nupvalues; GCObject *gclist; \
 	struct Table *env
 
-typedef struct CClosure {
+typedef struct CClosure { // 为C函数创建的闭包
   ClosureHeader;
   lua_CFunction f;
-  TValue upvalue[1];
+  TValue upvalue[1];// 上值
 } CClosure;
 
 
-typedef struct LClosure {
+typedef struct LClosure { // 为lua函数创建的闭包
   ClosureHeader;
-  struct Proto *p;
-  UpVal *upvals[1];
+  struct Proto *p;  // 函数原型
+  UpVal *upvals[1]; // 上值，表示在词法上包围该函数的环境中的局部变量。
 } LClosure;
 
 
